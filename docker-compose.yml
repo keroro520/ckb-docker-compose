@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  ckb:
+    image: nervos/ckb:latest
+    user: root
+    ports:
+      - 8114:8114   # rpc
+      - 8115:8115   # p2p network
+    command: [ "run", "-C", "/var/lib/ckb" ]
+
+  # "nervos/ckb" image have no http clients to do health check for CKB.
+  # This short-term service act as a workaround to do health check.
+  check-ckb-started-successfully:
+    image: curlimages/curl
+    command: [ 'http://ckb:8114', '-H', 'content-type: application/json', '-d', '{ "id": 2, "jsonrpc": "2.0", "method": "get_tip_block_number", "params": [] }' ]
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 1000
+    depends_on:
+      - ckb
+
+  ckb-indexer:
+    image: nervos/ckb-indexer:latest
+    init: true
+    environment:
+      CKB_RPC: http://ckb:8114
+    ports:
+      - 8116:8116
+    command: [ "-c", "http://ckb:8114", "-l", "0.0.0.0:8116", "-s", "/var/lib/ckb-indexer"]
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+    depends_on:
+      check-ckb-started-successfully:
+        condition: service_completed_successfully
